@@ -1,7 +1,7 @@
 import type { ContentFormat } from "../types";
 
-const FORMAT_RULES: Array<{ format: ContentFormat; keywords: string[] }> = [
-  { format: "Comparison", keywords: ["vs", "karşı", "versus", "compared", "or", "mi", "mı"] },
+const FORMAT_RULES: Array<{ format: ContentFormat; keywords: string[]; wordBoundary?: boolean }> = [
+  { format: "Comparison", keywords: ["vs", "karşı", "versus", "compared", "or", "mi", "mı"], wordBoundary: true },
   { format: "Ranking", keywords: ["top ", "best ", "worst ", "ranked", "ranking", "sıralama", "en iyi", "en kötü"] },
   { format: "Tutorial", keywords: ["how to", "tutorial", "guide", "nasıl", "öğren", "learn", "step by step"] },
   { format: "Timeline", keywords: ["history of", "timeline", "tarih", "evolution", "through the years", "yıllar içinde"] },
@@ -15,8 +15,11 @@ export function classifyFormat(title: string, durationSeconds: number): ContentF
 
   const lower = title.toLowerCase();
 
-  for (const { format, keywords } of FORMAT_RULES) {
-    if (keywords.some((kw) => lower.includes(kw))) return format;
+  for (const { format, keywords, wordBoundary } of FORMAT_RULES) {
+    const matches = wordBoundary
+      ? keywords.some((kw) => new RegExp(`\\b${kw}\\b`).test(lower))
+      : keywords.some((kw) => lower.includes(kw));
+    if (matches) return format;
   }
 
   return "Unknown";
