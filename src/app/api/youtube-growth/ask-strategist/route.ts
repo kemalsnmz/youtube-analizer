@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askGrowthStrategist } from "@/features/youtube-growth/ai/growthStrategist";
+import { buildKnowledgeContext } from "@/features/knowledge-agent/retriever/contextBuilder";
 import type { AskStrategistRequest, AskStrategistResponse } from "@/features/youtube-growth/types";
 
 export async function POST(
@@ -12,8 +13,10 @@ export async function POST(
     return NextResponse.json({ error: "Soru boş olamaz." }, { status: 400 });
   }
 
+  const knowledgeContext = buildKnowledgeContext(question);
+
   try {
-    const answer = await askGrowthStrategist(question, report);
+    const answer = await askGrowthStrategist(question, report, knowledgeContext);
     return NextResponse.json({ answer });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "AI yanıt üretemedi.";
