@@ -66,4 +66,15 @@ export interface SearchResult {
 export interface KnowledgeStore {
   sources: KnowledgeSource[];
   updatedAt: string;
+  lastResearchAt: string | null;
+}
+
+export interface ResearchStatus {
+  sourceCount: number;
+  isEmpty: boolean;
+  isStale: boolean;
+  lastResearchAt: string | null;
+  daysSinceLast: number | null;
+  staleThresholdDays: number;
+  shouldAutoTrigger: boolean;
 }

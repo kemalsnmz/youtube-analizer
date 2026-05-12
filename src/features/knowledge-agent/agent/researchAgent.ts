@@ -5,6 +5,7 @@ import {
   executeIngestUrl,
   type ToolName,
 } from "./agentTools";
+import { markResearchCompleted } from "../embeddings/vectorStore";
 
 // ─── Event Types (streamed to client) ─────────────────────────────────────────
 
@@ -180,6 +181,7 @@ Kurallar:
         }
       } else if (toolName === "finish_research") {
         const summary = String(tool.input.summary ?? "Araştırma tamamlandı.");
+        markResearchCompleted();
         emit({ type: "done", summary, stats });
         finished = true;
         result = JSON.stringify({ acknowledged: true });
@@ -193,11 +195,12 @@ Kurallar:
     messages.push({ role: "user", content: toolResults });
   }
 
-  // If agent didn't call finish_research explicitly
-  if (stats.toolCalls >= MAX_TOOL_CALLS || stats.ingested + stats.cached > 0) {
+  // If agent hit tool call limit without calling finish_research
+  if (stats.toolCalls >= MAX_TOOL_CALLS) {
+    markResearchCompleted();
     emit({
       type: "done",
-      summary: `Araştırma tamamlandı. ${stats.ingested} yeni kaynak eklendi, ${stats.cached} zaten mevcuttu.`,
+      summary: `Araştırma tamamlandı (limit). ${stats.ingested} yeni kaynak eklendi, ${stats.cached} zaten mevcuttu.`,
       stats,
     });
   }

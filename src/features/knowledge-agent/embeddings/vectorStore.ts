@@ -12,13 +12,14 @@ function ensureDir(): void {
 export function readStore(): KnowledgeStore {
   ensureDir();
   if (!fs.existsSync(STORE_PATH)) {
-    return { sources: [], updatedAt: new Date().toISOString() };
+    return { sources: [], updatedAt: new Date().toISOString(), lastResearchAt: null };
   }
   try {
     const raw = fs.readFileSync(STORE_PATH, "utf-8");
-    return JSON.parse(raw) as KnowledgeStore;
+    const store = JSON.parse(raw) as KnowledgeStore;
+    return { ...store, lastResearchAt: store.lastResearchAt ?? null };
   } catch {
-    return { sources: [], updatedAt: new Date().toISOString() };
+    return { sources: [], updatedAt: new Date().toISOString(), lastResearchAt: null };
   }
 }
 
@@ -54,4 +55,10 @@ export function getSourceByUrl(url: string): KnowledgeSource | undefined {
 
 export function getAllSources(): KnowledgeSource[] {
   return readStore().sources;
+}
+
+export function markResearchCompleted(): void {
+  const store = readStore();
+  store.lastResearchAt = new Date().toISOString();
+  writeStore(store);
 }
