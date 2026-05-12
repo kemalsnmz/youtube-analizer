@@ -3,10 +3,9 @@
 import { useState } from "react";
 import { YouTubeGrowthPage } from "@/features/youtube-growth/pages/YouTubeGrowthPage";
 import { CompetitorAnalysisPage } from "@/features/competitor-analysis/pages/CompetitorAnalysisPage";
-import { KnowledgeAgentPage } from "@/features/knowledge-agent/pages/KnowledgeAgentPage";
-import { TrendingUp, Users, BookOpen } from "lucide-react";
+import { TrendingUp, Users } from "lucide-react";
 
-type Tab = "growth" | "competitor" | "knowledge";
+type Tab = "growth" | "competitor";
 
 const TABS: { id: Tab; label: string; Icon: typeof TrendingUp; description: string }[] = [
   {
@@ -20,12 +19,6 @@ const TABS: { id: Tab; label: string; Icon: typeof TrendingUp; description: stri
     label: "Rakip Analizi",
     Icon: Users,
     description: "Rakip kanalı analiz et, fırsatları keşfet",
-  },
-  {
-    id: "knowledge",
-    label: "Bilgi Kütüphanesi",
-    Icon: BookOpen,
-    description: "Kaynak ekle, AI stratejisti besle",
   },
 ];
 
@@ -67,9 +60,6 @@ export default function DashboardPage() {
         </div>
         <div className={activeTab === "competitor" ? "block" : "hidden"}>
           <CompetitorAnalysisPage />
-        </div>
-        <div className={activeTab === "knowledge" ? "block" : "hidden"}>
-          <KnowledgeAgentPage />
         </div>
       </div>
     </div>
