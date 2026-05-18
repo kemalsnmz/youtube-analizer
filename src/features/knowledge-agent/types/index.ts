@@ -1,4 +1,4 @@
-export type SourceType = "youtube" | "article" | "manual";
+export type SourceType = "youtube" | "article" | "pdf" | "manual";
 export type ProcessingStatus = "pending" | "processing" | "ready" | "error";
 
 export interface KnowledgeChunk {

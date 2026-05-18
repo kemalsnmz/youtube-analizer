@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Play, CheckCircle, AlertCircle, Search, Download, Loader2, Clock, RefreshCw, X } from "lucide-react";
+import { Bot, CheckCircle, AlertCircle, Search, Download, Loader2, Clock, RefreshCw } from "lucide-react";
 import type { AgentEvent, ResearchStats } from "../agent/researchAgent";
 import type { ResearchStatus } from "../types";
 import { RESEARCH_TOPICS, TOTAL_ESTIMATED_INGESTS } from "../agent/topics";
@@ -12,18 +12,14 @@ interface LogLine {
   time: string;
 }
 
-const COUNTDOWN_SECS = 5;
-
 export function ResearchAgentPanel() {
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<LogLine[]>([]);
   const [stats, setStats] = useState<ResearchStats | null>(null);
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<ResearchStatus | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef(0);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (logRef.current) {
@@ -31,9 +27,21 @@ export function ResearchAgentPanel() {
     }
   }, [log]);
 
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/research/status");
+      const data = (await res.json()) as ResearchStatus;
+      setStatus(data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchStatus();
+  }, [fetchStatus]);
+
   const startResearch = useCallback(async () => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    setCountdown(null);
     setRunning(true);
     setLog([]);
     setStats(null);
@@ -75,46 +83,7 @@ export function ResearchAgentPanel() {
     } finally {
       setRunning(false);
     }
-  }, []);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/research/status");
-      const data = (await res.json()) as ResearchStatus;
-      setStatus(data);
-      return data;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // On mount: fetch status → auto-trigger if needed
-  useEffect(() => {
-    fetchStatus().then((data) => {
-      if (!data?.shouldAutoTrigger) return;
-      let secs = COUNTDOWN_SECS;
-      setCountdown(secs);
-      countdownRef.current = setInterval(() => {
-        secs--;
-        if (secs <= 0) {
-          clearInterval(countdownRef.current!);
-          setCountdown(null);
-          void startResearch();
-        } else {
-          setCountdown(secs);
-        }
-      }, 1000);
-    });
-
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [fetchStatus, startResearch]);
-
-  function cancelCountdown() {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    setCountdown(null);
-  }
+  }, [fetchStatus]);
 
   function addLine(event: AgentEvent) {
     const time = new Date().toLocaleTimeString("tr-TR", {
@@ -186,7 +155,6 @@ export function ResearchAgentPanel() {
     }
   }
 
-  // Status badge
   function renderStatusBadge() {
     if (!status) return null;
     if (status.isEmpty) return (
@@ -222,8 +190,7 @@ export function ResearchAgentPanel() {
               <Loader2 className="w-3 h-3 animate-spin" /> Çalışıyor
             </span>
           )}
-          {done && !running && renderStatusBadge()}
-          {!done && !running && renderStatusBadge()}
+          {!running && renderStatusBadge()}
         </div>
         <button
           onClick={() => void startResearch()}
@@ -237,27 +204,8 @@ export function ResearchAgentPanel() {
       </div>
 
       <p className="text-xs text-gray-400 mb-4 ml-9">
-        Claude {RESEARCH_TOPICS.length} konuyu araştırır · Eğer {status?.staleThresholdDays ?? 7}+ gündür güncellenmemişse otomatik başlar
+        Claude {RESEARCH_TOPICS.length} konuyu araştırır · Sunucu başladığında otomatik çalışır, her {status?.staleThresholdDays ?? 7} günde bir yenilenir
       </p>
-
-      {/* Auto-trigger countdown */}
-      {countdown !== null && (
-        <div className="mb-4 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-          <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-          <p className="text-sm text-amber-800 flex-1">
-            {status?.isEmpty
-              ? "Bilgi kütüphanesi boş."
-              : `Kütüphane ${status?.daysSinceLast} gündür güncellenmedi.`}{" "}
-            Araştırma <span className="font-bold">{countdown}</span> saniye içinde başlıyor...
-          </p>
-          <button
-            onClick={cancelCountdown}
-            className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 font-medium"
-          >
-            <X className="w-3.5 h-3.5" /> İptal
-          </button>
-        </div>
-      )}
 
       {/* Stats */}
       {stats && (
@@ -293,10 +241,12 @@ export function ResearchAgentPanel() {
       )}
 
       {/* Empty state */}
-      {log.length === 0 && !running && countdown === null && (
+      {log.length === 0 && !running && (
         <div className="text-center py-8 text-gray-400 text-sm">
           <Bot className="w-8 h-8 mx-auto mb-2 text-gray-200" />
-          "Şimdi Araştır" butonuna bas veya sayfayı aç — gerekirse otomatik başlar.
+          {status?.isStale || status?.isEmpty
+            ? "Sunucu başlatıldığında araştırma otomatik çalışıyor. Manuel başlatmak için butona bas."
+            : "Kütüphane güncel. Manuel yenileme için butona bas."}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { RESEARCH_TOPICS } from "./topics";
+import { RESEARCH_TOPICS, STATIC_SOURCES } from "./topics";
 import {
   TOOL_DEFINITIONS,
   executeSearchYoutube,
@@ -70,9 +70,33 @@ export async function runResearchAgent(emit: EmitFn): Promise<void> {
     return;
   }
 
-  emit({ type: "start", totalTopics: RESEARCH_TOPICS.length });
+  emit({ type: "start", totalTopics: RESEARCH_TOPICS.length + STATIC_SOURCES.length });
 
   const stats: ResearchStats = { ingested: 0, cached: 0, errors: 0, toolCalls: 0 };
+
+  // Önce sabit kaynakları ingest et (web makaleleri + PDF'ler)
+  for (const src of STATIC_SOURCES) {
+    const result = await executeIngestUrl(src.url);
+    try {
+      const parsed = JSON.parse(result) as {
+        success: boolean;
+        title?: string;
+        cached?: boolean;
+        error?: string;
+      };
+      if (parsed.success) {
+        const status = parsed.cached ? "cached" : "ok";
+        if (parsed.cached) stats.cached++;
+        else stats.ingested++;
+        emit({ type: "ingest", url: src.url, title: parsed.title ?? src.url, status });
+      } else {
+        stats.errors++;
+        emit({ type: "ingest", url: src.url, title: src.url, status: "error", error: parsed.error });
+      }
+    } catch {
+      stats.errors++;
+    }
+  }
 
   const topicList = RESEARCH_TOPICS.map(
     (t, i) => `${i + 1}. [${t.category}] "${t.query}" (max ${t.maxResults} video)`
@@ -80,10 +104,15 @@ export async function runResearchAgent(emit: EmitFn): Promise<void> {
 
   const systemPrompt = `Sen bir YouTube büyüme araştırma agentısın. Görevin YouTube kanal büyüme stratejileri hakkında kapsamlı bir bilgi kütüphanesi oluşturmak.
 
+Kaynak tipleri:
+- YouTube videoları: search_youtube ile ara, ingest_url ile ekle
+- Web makaleleri: direkt URL ile ingest_url kullanabilirsin
+- PDF belgeler: .pdf uzantılı URL'leri ingest_url ile ekle
+
 Adımlar:
 1. Her konu için search_youtube ile video ara
 2. Arama sonuçlarından konuyla gerçekten alakalı olanları ingest_url ile ekle
-3. Alakasız, çok genel veya reklamsal içerikleri atlat
+3. Reklamsal, yüzeysel veya alakasız içerikleri atla — kaliteyi ön planda tut
 4. Tüm konuları bitirince finish_research çağır
 
 Araştırılacak konular:
@@ -91,8 +120,7 @@ ${topicList}
 
 Kurallar:
 - Her konuda en fazla ${RESEARCH_TOPICS[0].maxResults} video ingest et
-- Eğitici ve veri destekli içerikleri tercih et
-- "how to" ve rehber formatındaki videoları öncelikle al
+- Eğitici, veri destekli, "how to" formatındaki içerikleri tercih et
 - Toplam ${MAX_TOOL_CALLS} araç çağrısı limiti var, verimli çalış`;
 
   const messages: AnthropicMessage[] = [

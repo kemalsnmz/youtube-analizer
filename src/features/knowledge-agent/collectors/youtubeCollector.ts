@@ -1,3 +1,14 @@
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { tmpdir } from "os";
+import { join } from "path";
+import { readFileSync, unlinkSync, existsSync } from "fs";
+import path from "path";
+
+const execFileAsync = promisify(execFile);
+
+const YTDLP = path.join(process.cwd(), "bin", "yt-dlp.exe");
+
 interface RawVideoSnippet {
   title: string;
   description: string;
@@ -27,6 +38,54 @@ export function parseVideoId(url: string): string | null {
   return null;
 }
 
+// ─── yt-dlp + Groq Whisper ────────────────────────────────────────────────────
+
+async function fetchGroqTranscript(videoId: string): Promise<string | null> {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return null;
+
+  const outPath = join(tmpdir(), `yt-${videoId}.webm`);
+
+  try {
+    // yt-dlp ile ses indir (ffmpeg gerektirmeyen format)
+    await execFileAsync(YTDLP, [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "-f", "worstaudio",
+      "-o", outPath,
+      "--no-playlist",
+      "--js-runtimes", "node",
+      "--quiet",
+    ], { timeout: 90_000 });
+
+    if (!existsSync(outPath)) return null;
+
+    const audioBuffer = readFileSync(outPath);
+    if (audioBuffer.length > 24 * 1024 * 1024) return null; // 24MB limit
+
+    const blob = new Blob([audioBuffer], { type: "audio/webm" });
+    const formData = new FormData();
+    formData.append("file", blob, "audio.webm");
+    formData.append("model", "whisper-large-v3");
+    formData.append("response_format", "text");
+
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${groqKey}` },
+      body: formData,
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!res.ok) return null;
+    return (await res.text()).trim() || null;
+  } catch {
+    return null;
+  } finally {
+    try { if (existsSync(outPath)) unlinkSync(outPath); } catch { /* ignore */ }
+  }
+}
+
+// ─── Ana Kolektör ─────────────────────────────────────────────────────────────
+
 export async function collectYoutubeVideo(
   videoId: string
 ): Promise<{ title: string; text: string; tags: string[] }> {
@@ -46,6 +105,16 @@ export async function collectYoutubeVideo(
   if (!item) throw new Error(`Video bulunamadı: ${videoId}`);
 
   const { title, description, tags = [] } = item.snippet;
-  const text = [title, description].filter(Boolean).join("\n\n");
+
+  const transcript = await fetchGroqTranscript(videoId);
+
+  const MIN_WORDS = 100;
+  const wordCount = transcript ? transcript.split(/\s+/).filter(Boolean).length : 0;
+  if (!transcript || wordCount < MIN_WORDS) {
+    throw new Error(`Transkript alınamadı veya çok kısa (${wordCount} kelime). Video atlandı.`);
+  }
+
+  const text = [title, description, transcript].filter(Boolean).join("\n\n");
+
   return { title, text, tags: tags.slice(0, 10) };
 }
