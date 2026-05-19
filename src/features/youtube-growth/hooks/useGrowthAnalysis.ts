@@ -14,6 +14,7 @@ export function useGrowthAnalysis() {
   async function analyze(request: GrowthAnalyzeRequest) {
     setStatus("loading");
     setError(null);
+    setReport(null);
     try {
       const res = await fetch("/api/youtube-growth/analyze-channel", {
         method: "POST",
@@ -35,5 +36,12 @@ export function useGrowthAnalysis() {
     }
   }
 
-  return { status, report, error, cached, analyze };
+  function loadReport(r: GrowthAnalysisReport) {
+    setReport(r);
+    setCached(true);
+    setStatus("success");
+    setError(null);
+  }
+
+  return { status, report, error, cached, analyze, loadReport };
 }

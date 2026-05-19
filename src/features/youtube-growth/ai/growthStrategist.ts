@@ -4,6 +4,69 @@ interface AnthropicResponse {
   content: { text: string }[];
 }
 
+// ─── Otomatik Büyüme Planı Üretici ───────────────────────────────────────────
+
+export async function generateGrowthPlan(
+  report: GrowthAnalysisReport,
+  knowledgeContext: string
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY ortam değişkeni eksik.");
+
+  const prompt = `Bu kanalı analiz et ve profesyonel bir büyüme planı oluştur.
+
+Planı şu yapıda ver (Türkçe, markdown formatında):
+
+## 🔍 Kanal Teşhisi
+Kanalın mevcut durumu 3-4 cümleyle. Somut sayılar kullan.
+
+## 🚨 Kritik Sorunlar
+Her sorun için:
+- **Sorun:** [ne]
+- **Kanıt:** [kanaldan somut veri]
+- **Neden kritik:** [etkisi]
+
+## 📅 90 Günlük Büyüme Planı
+
+### Hafta 1-2: Acil Aksiyonlar
+[Bu hafta yapılacak 3-4 somut adım]
+
+### Ay 1: Temel Düzeltmeler
+[İlk ay odaklanılacak 3-4 alan]
+
+### Ay 2-3: Büyüme Akseleratörleri
+[Büyümeyi hızlandıracak 3-4 strateji]
+
+## 🎯 Öncelikli İçerik Fırsatları
+Bu kanalın verilerine göre en yüksek potansiyelli 3 içerik konusu/formatı. Her biri için örnek başlık öner.
+
+## 📊 Başarı Metrikleri
+30 / 60 / 90 günde hedeflenmesi gereken somut KPI'lar (izlenme, CTR, retention, abone).`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2500,
+      system: buildSystemPrompt(report, knowledgeContext),
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Anthropic API hatası ${res.status}: ${body}`);
+  }
+
+  const data = (await res.json()) as AnthropicResponse;
+  return data.content[0]?.text ?? "Plan üretilemedi.";
+}
+
 export async function askGrowthStrategist(
   question: string,
   report: GrowthAnalysisReport,

@@ -25,7 +25,7 @@ export function GrowthOpportunityPanel({ opportunities }: Props) {
   if (opportunities.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
       <div className="flex items-center gap-2 mb-6">
         <Lightbulb className="w-5 h-5 text-amber-500" />
         <h3 className="font-semibold text-gray-900">Büyüme Fırsatları</h3>

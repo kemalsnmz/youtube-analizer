@@ -61,7 +61,7 @@ interface AnthropicResponse {
 
 // ─── Agent Runner ──────────────────────────────────────────────────────────────
 
-const MAX_TOOL_CALLS = 60;
+const MAX_TOOL_CALLS = 120;
 
 export async function runResearchAgent(emit: EmitFn): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { GrowthAnalysisReport } from "../types";
 import { Bot, Send, Loader2, Lock } from "lucide-react";
 
@@ -16,12 +16,104 @@ interface Props {
   report: GrowthAnalysisReport;
 }
 
+function AssistantMessage({ content }: { content: string }) {
+  const lines = content.split("\n");
+
+  return (
+    <div className="space-y-1.5 text-sm text-gray-800">
+      {lines.map((line, i) => {
+        // ## Başlık
+        if (line.startsWith("## ")) {
+          return (
+            <p key={i} className="font-bold text-gray-900 text-base mt-3 mb-1 first:mt-0">
+              {line.slice(3)}
+            </p>
+          );
+        }
+        // ### Alt başlık
+        if (line.startsWith("### ")) {
+          return (
+            <p key={i} className="font-semibold text-purple-700 mt-2 mb-0.5">
+              {line.slice(4)}
+            </p>
+          );
+        }
+        // **Tanı:** veya **Kanıt:** gibi bold label ile başlayan satır
+        if (line.match(/^\*\*[^*]+:\*\*/)) {
+          const match = line.match(/^\*\*([^*]+):\*\*(.*)/);
+          if (match) {
+            return (
+              <p key={i} className="leading-relaxed">
+                <span className="font-bold text-gray-900">{match[1]}:</span>
+                <span>{renderInline(match[2])}</span>
+              </p>
+            );
+          }
+        }
+        // - bullet ile başlayan satır
+        if (line.startsWith("- ")) {
+          return (
+            <div key={i} className="flex gap-2 leading-relaxed pl-1">
+              <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+              <span>{renderInline(line.slice(2))}</span>
+            </div>
+          );
+        }
+        // 1. 2. numaralı liste
+        if (line.match(/^\d+\.\s/)) {
+          const match = line.match(/^(\d+)\.\s(.*)/);
+          if (match) {
+            return (
+              <div key={i} className="flex gap-2 leading-relaxed pl-1">
+                <span className="text-purple-500 font-semibold shrink-0 min-w-[1.2rem]">{match[1]}.</span>
+                <span>{renderInline(match[2])}</span>
+              </div>
+            );
+          }
+        }
+        // Boş satır
+        if (line.trim() === "") {
+          return <div key={i} className="h-1" />;
+        }
+        // Normal paragraf
+        return (
+          <p key={i} className="leading-relaxed">
+            {renderInline(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={i} className="font-semibold text-gray-900">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 export function AIStrategistChat({ report }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [noKey, setNoKey] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   async function sendMessage(question?: string) {
     const q = (question ?? input).trim();
@@ -76,7 +168,7 @@ export function AIStrategistChat({ report }: Props) {
       </div>
       <p className="text-xs text-gray-400 mb-5 ml-9">Kanalın hakkında veri destekli stratejik cevaplar alın.</p>
 
-      <div className="min-h-[180px] max-h-[380px] overflow-y-auto space-y-3 mb-4">
+      <div className="min-h-[180px] max-h-[520px] overflow-y-auto space-y-4 mb-4 pr-1">
         {messages.length === 0 && (
           <div className="text-center py-6">
             <p className="text-sm text-gray-400 mb-3">Hızlı soru seç veya kendin yaz:</p>
@@ -95,24 +187,29 @@ export function AIStrategistChat({ report }: Props) {
         )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-red-600 text-white"
-                  : "bg-gray-100 text-gray-800"
-              }`}
-            >
-              {msg.content}
-            </div>
+            {msg.role === "user" ? (
+              <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-red-600 text-white">
+                {msg.content}
+              </div>
+            ) : (
+              <div className="max-w-[90%] rounded-2xl px-5 py-4 bg-gray-50 border border-gray-100">
+                <AssistantMessage content={msg.content} />
+              </div>
+            )}
           </div>
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-2xl px-4 py-2.5">
-              <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4">
+              <div className="flex gap-1 items-center">
+                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:300ms]" />
+              </div>
             </div>
           </div>
         )}
+        <div ref={bottomRef} />
       </div>
 
       <div className="flex gap-2">

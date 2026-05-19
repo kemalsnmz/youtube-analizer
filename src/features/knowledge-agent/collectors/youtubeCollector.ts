@@ -84,37 +84,82 @@ async function fetchGroqTranscript(videoId: string): Promise<string | null> {
   }
 }
 
+// ─── yt-dlp metadata fallback ────────────────────────────────────────────────
+
+interface YtdlpMeta {
+  title?: string;
+  description?: string;
+  tags?: string[];
+}
+
+async function fetchMetaViaYtdlp(videoId: string): Promise<{ title: string; description: string; tags: string[] } | null> {
+  try {
+    const { stdout } = await execFileAsync(YTDLP, [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "--dump-json",
+      "--no-playlist",
+      "--skip-download",
+      "--quiet",
+    ], { timeout: 30_000 });
+    const meta = JSON.parse(stdout) as YtdlpMeta;
+    return {
+      title: meta.title ?? videoId,
+      description: meta.description ?? "",
+      tags: (meta.tags ?? []).slice(0, 10),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Ana Kolektör ─────────────────────────────────────────────────────────────
 
 export async function collectYoutubeVideo(
   videoId: string
 ): Promise<{ title: string; text: string; tags: string[] }> {
+  let title = videoId;
+  let description = "";
+  let tags: string[] = [];
+
+  // 1. YouTube Data API dene
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) throw new Error("YOUTUBE_API_KEY ortam değişkeni eksik.");
-
-  const endpoint = new URL("https://www.googleapis.com/youtube/v3/videos");
-  endpoint.searchParams.set("key", apiKey);
-  endpoint.searchParams.set("part", "snippet");
-  endpoint.searchParams.set("id", videoId);
-
-  const res = await fetch(endpoint.toString());
-  if (!res.ok) throw new Error(`YouTube API hatası ${res.status}`);
-
-  const data = (await res.json()) as YoutubeVideosResponse;
-  const item = data.items?.[0];
-  if (!item) throw new Error(`Video bulunamadı: ${videoId}`);
-
-  const { title, description, tags = [] } = item.snippet;
-
-  const transcript = await fetchGroqTranscript(videoId);
-
-  const MIN_WORDS = 100;
-  const wordCount = transcript ? transcript.split(/\s+/).filter(Boolean).length : 0;
-  if (!transcript || wordCount < MIN_WORDS) {
-    throw new Error(`Transkript alınamadı veya çok kısa (${wordCount} kelime). Video atlandı.`);
+  if (apiKey) {
+    try {
+      const endpoint = new URL("https://www.googleapis.com/youtube/v3/videos");
+      endpoint.searchParams.set("key", apiKey);
+      endpoint.searchParams.set("part", "snippet");
+      endpoint.searchParams.set("id", videoId);
+      const res = await fetch(endpoint.toString());
+      if (res.ok) {
+        const data = (await res.json()) as YoutubeVideosResponse;
+        const item = data.items?.[0];
+        if (item) {
+          title = item.snippet.title;
+          description = item.snippet.description;
+          tags = (item.snippet.tags ?? []).slice(0, 10);
+        }
+      }
+    } catch { /* fallback'e geç */ }
   }
+
+  // 2. API başarısız olduysa yt-dlp ile metadata al
+  if (title === videoId) {
+    const meta = await fetchMetaViaYtdlp(videoId);
+    if (meta) {
+      title = meta.title;
+      description = meta.description;
+      tags = meta.tags;
+    }
+  }
+
+  if (title === videoId && !description) {
+    throw new Error("Video metadata alınamadı.");
+  }
+
+  // 3. Transkript dene (başarısız olursa title+description ile devam)
+  const transcript = await fetchGroqTranscript(videoId).catch(() => null);
 
   const text = [title, description, transcript].filter(Boolean).join("\n\n");
 
-  return { title, text, tags: tags.slice(0, 10) };
+  return { title, text, tags };
 }

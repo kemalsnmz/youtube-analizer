@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeChannelGrowth } from "@/features/youtube-growth/api/analyzer";
+import { saveAnalysis } from "@/features/youtube-growth/history/historyStore";
 import type {
   GrowthAnalyzeRequest,
   GrowthAnalyzeResponse,
@@ -29,6 +30,7 @@ export async function POST(
 
   try {
     const { report, cached } = await analyzeChannelGrowth({ channelUrl, maxVideos });
+    if (!cached) saveAnalysis(report);
     return NextResponse.json({ success: true, report, cached });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Bilinmeyen hata.";

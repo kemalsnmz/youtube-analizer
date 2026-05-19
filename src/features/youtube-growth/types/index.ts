@@ -102,3 +102,38 @@ export type AskStrategistRequest = {
 export type AskStrategistResponse = {
   answer: string;
 };
+
+// ─── Video Fikir Üreteci ──────────────────────────────────────────────────────
+
+export type VideoIdea = {
+  title: string;
+  rationale: string;
+  targetAudience: string;
+  inspirationSource: string;
+  format: string;
+};
+
+// ─── Analiz Geçmişi ───────────────────────────────────────────────────────────
+
+export type AnalysisHistoryEntry = {
+  id: string;
+  channelId: string;
+  channelTitle: string;
+  channelThumbnailUrl: string;
+  channelCustomUrl?: string;
+  analyzedAt: string;
+  subscriberCount: number;
+  totalViewCount: number;
+  averageViews: number;
+  channelHealthScore: number;
+  channelHealthLabel: string;
+  growthDiagnosisStatus: "growing" | "stable" | "declining";
+  uploadsPerWeek: number;
+  totalVideosAnalyzed: number;
+  reportFile: string;
+};
+
+export type AnalysisHistoryStore = {
+  entries: AnalysisHistoryEntry[];
+  updatedAt: string;
+};

@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# knowledge store — runtime data, not source
+data/knowledge/knowledge.db
+data/knowledge/knowledge.db-shm
+data/knowledge/knowledge.db-wal
+data/history/
+ingest-log.txt
+
+# claude local settings
+.claude/settings.local.json
+.claude/settings.json
+
+# yt-dlp binary
+bin/
