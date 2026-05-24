@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, CheckCircle, AlertCircle, Search, Download, Loader2, Clock, RefreshCw } from "lucide-react";
+import { Bot, CheckCircle, AlertCircle, Search, Download, Loader2, Clock, RefreshCw, BookMarked } from "lucide-react";
 import type { AgentEvent, ResearchStats } from "../agent/researchAgent";
 import type { ResearchStatus } from "../types";
 import { RESEARCH_TOPICS, TOTAL_ESTIMATED_INGESTS } from "../agent/topics";
@@ -18,6 +18,8 @@ export function ResearchAgentPanel() {
   const [stats, setStats] = useState<ResearchStats | null>(null);
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<ResearchStatus | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<{ exported: number; errors: number; total: number } | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef(0);
 
@@ -85,6 +87,22 @@ export function ResearchAgentPanel() {
     }
   }, [fetchStatus]);
 
+  const exportToObsidian = useCallback(async () => {
+    setExporting(true);
+    setExportResult(null);
+    try {
+      const res = await fetch("/api/admin/obsidian/export", { method: "POST" });
+      const data = (await res.json()) as { exported: number; errors: number; total: number; error?: string };
+      if (data.error) throw new Error(data.error);
+      setExportResult(data);
+    } catch (err) {
+      setExportResult({ exported: 0, errors: 1, total: 0 });
+      console.error(err);
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
   function addLine(event: AgentEvent) {
     const time = new Date().toLocaleTimeString("tr-TR", {
       hour: "2-digit", minute: "2-digit", second: "2-digit",
@@ -109,11 +127,18 @@ export function ResearchAgentPanel() {
             <span className="line-clamp-1">{event.text}</span>
           </div>
         );
+      case "web_search":
+        return (
+          <div className="flex items-center gap-2 text-emerald-400">
+            <Search className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Web: <span className="font-medium">"{event.query}"</span></span>
+          </div>
+        );
       case "search":
         return (
           <div className="flex items-center gap-2 text-blue-400">
             <Search className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>Aranıyor: <span className="font-medium">"{event.query}"</span></span>
+            <span>YouTube: <span className="font-medium">"{event.query}"</span></span>
           </div>
         );
       case "results":
@@ -192,15 +217,28 @@ export function ResearchAgentPanel() {
           )}
           {!running && renderStatusBadge()}
         </div>
-        <button
-          onClick={() => void startResearch()}
-          disabled={running}
-          className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-sm font-medium rounded-xl transition-colors"
-        >
-          {running
-            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Çalışıyor...</>
-            : <><RefreshCw className="w-3.5 h-3.5" /> Şimdi Araştır</>}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void exportToObsidian()}
+            disabled={exporting || running}
+            title="Tüm kaynakları Obsidian vault'una yaz"
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 text-sm font-medium rounded-xl transition-colors"
+          >
+            {exporting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <BookMarked className="w-3.5 h-3.5" />}
+            Obsidian'a Aktar
+          </button>
+          <button
+            onClick={() => void startResearch()}
+            disabled={running}
+            className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-sm font-medium rounded-xl transition-colors"
+          >
+            {running
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Çalışıyor...</>
+              : <><RefreshCw className="w-3.5 h-3.5" /> Şimdi Araştır</>}
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-gray-400 mb-4 ml-9">
@@ -220,6 +258,16 @@ export function ResearchAgentPanel() {
               <div className="text-xs text-gray-500 mt-0.5">{label}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Obsidian export result */}
+      {exportResult && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm ${exportResult.errors > 0 && exportResult.exported === 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+          <BookMarked className="w-4 h-4 flex-shrink-0" />
+          {exportResult.exported > 0
+            ? `${exportResult.exported} not Obsidian vault'una yazıldı${exportResult.errors > 0 ? ` (${exportResult.errors} hata)` : ""}.`
+            : "Obsidian'a aktarım başarısız — OBSIDIAN_VAULT_PATH kontrol et."}
         </div>
       )}
 

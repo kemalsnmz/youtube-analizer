@@ -2,6 +2,7 @@ import { RESEARCH_TOPICS, STATIC_SOURCES } from "./topics";
 import {
   TOOL_DEFINITIONS,
   executeSearchYoutube,
+  executeSearchWeb,
   executeIngestUrl,
   type ToolName,
 } from "./agentTools";
@@ -13,6 +14,7 @@ export type AgentEvent =
   | { type: "start"; totalTopics: number }
   | { type: "thinking"; text: string }
   | { type: "search"; query: string }
+  | { type: "web_search"; query: string }
   | { type: "results"; count: number; items: { title: string; url: string }[] }
   | { type: "ingest"; url: string; title: string; status: "ok" | "cached" | "error"; error?: string }
   | { type: "done"; summary: string; stats: ResearchStats }
@@ -62,6 +64,9 @@ interface AnthropicResponse {
 // ─── Agent Runner ──────────────────────────────────────────────────────────────
 
 const MAX_TOOL_CALLS = 120;
+const RATE_LIMIT_DELAY_MS = 5000; // 5s between Anthropic calls to stay under 30k TPM
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function runResearchAgent(emit: EmitFn): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -106,14 +111,15 @@ export async function runResearchAgent(emit: EmitFn): Promise<void> {
 
 Kaynak tipleri:
 - YouTube videoları: search_youtube ile ara, ingest_url ile ekle
-- Web makaleleri: direkt URL ile ingest_url kullanabilirsin
+- Web makaleleri / bloglar: search_web ile bul, ingest_url ile ekle (Backlinko, Ahrefs, HubSpot, Sprout Social, SEMrush gibi güvenilir siteler tercih et)
 - PDF belgeler: .pdf uzantılı URL'leri ingest_url ile ekle
 
 Adımlar:
-1. Her konu için search_youtube ile video ara
-2. Arama sonuçlarından konuyla gerçekten alakalı olanları ingest_url ile ekle
-3. Reklamsal, yüzeysel veya alakasız içerikleri atla — kaliteyi ön planda tut
-4. Tüm konuları bitirince finish_research çağır
+1. Her konu için ÖNCE search_web ile makale/rehber ara — kaliteli blog içerikleri bul
+2. SONRA search_youtube ile aynı konuda video ara
+3. Arama sonuçlarından konuyla gerçekten alakalı olanları ingest_url ile ekle
+4. Reklamsal, yüzeysel veya alakasız içerikleri atla — kaliteyi ön planda tut
+5. Tüm konuları bitirince finish_research çağır
 
 Araştırılacak konular:
 ${topicList}
@@ -130,7 +136,10 @@ Kurallar:
     },
   ];
 
+  let isFirstCall = true;
   while (stats.toolCalls < MAX_TOOL_CALLS) {
+    if (!isFirstCall) await sleep(RATE_LIMIT_DELAY_MS);
+    isFirstCall = false;
     const response = await callAnthropic(apiKey, systemPrompt, messages);
 
     // Emit any text blocks (Claude's thinking)
@@ -162,7 +171,29 @@ Kurallar:
       const toolName = tool.name as ToolName;
       let result = "";
 
-      if (toolName === "search_youtube") {
+      if (toolName === "search_web") {
+        const query = String(tool.input.query ?? "");
+        const maxResults = Number(tool.input.max_results ?? 5);
+        emit({ type: "web_search", query });
+
+        result = await executeSearchWeb(query, maxResults);
+
+        try {
+          const parsed = JSON.parse(result) as {
+            results?: { title: string; url: string }[];
+            count?: number;
+          };
+          if (parsed.results) {
+            emit({
+              type: "results",
+              count: parsed.count ?? parsed.results.length,
+              items: parsed.results.map((r) => ({ title: r.title, url: r.url })),
+            });
+          }
+        } catch {
+          // ignore
+        }
+      } else if (toolName === "search_youtube") {
         const query = String(tool.input.query ?? "");
         const maxResults = Number(tool.input.max_results ?? 4);
         emit({ type: "search", query });
@@ -239,7 +270,8 @@ Kurallar:
 async function callAnthropic(
   apiKey: string,
   system: string,
-  messages: AnthropicMessage[]
+  messages: AnthropicMessage[],
+  retries = 3
 ): Promise<AnthropicResponse> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -256,6 +288,12 @@ async function callAnthropic(
       messages,
     }),
   });
+
+  if (res.status === 429 && retries > 0) {
+    const retryAfter = Number(res.headers.get("retry-after") ?? 30);
+    await new Promise((r) => setTimeout(r, retryAfter * 1000));
+    return callAnthropic(apiKey, system, messages, retries - 1);
+  }
 
   if (!res.ok) {
     const body = await res.text();
